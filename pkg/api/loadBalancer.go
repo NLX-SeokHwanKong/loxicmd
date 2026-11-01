@@ -59,6 +59,15 @@ type LoadBalancerService struct {
 	Host       string   `json:"host,omitempty"     yaml:"path"`
 	PpV2       bool     `json:"proxyprotocolv2"    yaml:"proxyprotocolv2"`
 	Egress     bool     `json:"egress"             yaml:"egress"`
+	QuicLb     *LbQuic  `json:"quicLb,omitempty"   yaml:"quicLb,omitempty"`
+}
+
+// LbQuic - QUIC-LB parameters of a quic-cid rule
+type LbQuic struct {
+	// SidLen - server ID length in bytes
+	SidLen uint8 `json:"sidLen" yaml:"sidLen"`
+	// Cr - config rotation value the connection IDs carry
+	Cr uint8 `json:"cr" yaml:"cr"`
 }
 
 type LoadBalancerEndpoint struct {

@@ -80,8 +80,20 @@ func NumToSelect(sel int) string {
 		ret = "n2"
 	case 6:
 		ret = "n3"
+	case 7:
+		ret = "quic-cid"
 	default:
 		ret = "rr"
+	}
+	return ret
+}
+
+// selectCell - the table's selector column. A quic-cid rule also shows its parameters there,
+// so no other rule's columns change.
+func selectCell(service api.LoadBalancerService) string {
+	ret := NumToSelect(int(service.Sel))
+	if service.QuicLb != nil {
+		ret += fmt.Sprintf(":sidlen=%d,cr=%d", service.QuicLb.SidLen, service.QuicLb.Cr)
 	}
 	return ret
 }
@@ -194,10 +206,10 @@ func PrintGetLbResult(resp *http.Response, o api.RESTOptions) {
 				for i, eps := range lbrule.Endpoints {
 					if i == 0 {
 						if lbrule.Service.PortMax == 0 {
-							data = append(data, []string{lbrule.Service.ExternalIP, secIPs, sources, lbrule.Service.Host, fmt.Sprintf("%d", lbrule.Service.Port), protocolStr, lbrule.Service.Name, fmt.Sprintf("%d", lbrule.Service.Block), NumToSelect(int(lbrule.Service.Sel)), NumToMode(int(lbrule.Service.Mode), lbrule.Service.PpV2, lbrule.Service.Egress),
+							data = append(data, []string{lbrule.Service.ExternalIP, secIPs, sources, lbrule.Service.Host, fmt.Sprintf("%d", lbrule.Service.Port), protocolStr, lbrule.Service.Name, fmt.Sprintf("%d", lbrule.Service.Block), selectCell(lbrule.Service), NumToMode(int(lbrule.Service.Mode), lbrule.Service.PpV2, lbrule.Service.Egress),
 								eps.EndpointIP, fmt.Sprintf("%d", eps.TargetPort), fmt.Sprintf("%d", eps.Weight), eps.State, eps.Counter})
 						} else {
-							data = append(data, []string{lbrule.Service.ExternalIP, secIPs, sources, lbrule.Service.Host, fmt.Sprintf("%d-%d", lbrule.Service.Port, lbrule.Service.PortMax), protocolStr, lbrule.Service.Name, fmt.Sprintf("%d", lbrule.Service.Block), NumToSelect(int(lbrule.Service.Sel)), NumToMode(int(lbrule.Service.Mode), lbrule.Service.PpV2, lbrule.Service.Egress),
+							data = append(data, []string{lbrule.Service.ExternalIP, secIPs, sources, lbrule.Service.Host, fmt.Sprintf("%d-%d", lbrule.Service.Port, lbrule.Service.PortMax), protocolStr, lbrule.Service.Name, fmt.Sprintf("%d", lbrule.Service.Block), selectCell(lbrule.Service), NumToMode(int(lbrule.Service.Mode), lbrule.Service.PpV2, lbrule.Service.Egress),
 								eps.EndpointIP, fmt.Sprintf("%d", eps.TargetPort), fmt.Sprintf("%d", eps.Weight), eps.State, eps.Counter})
 						}
 					} else {
@@ -208,10 +220,10 @@ func PrintGetLbResult(resp *http.Response, o api.RESTOptions) {
 				for i, eps := range lbrule.Endpoints {
 					if i == 0 {
 						if lbrule.Service.PortMax == 0 {
-							data = append(data, []string{lbrule.Service.ExternalIP, secIPs, sources, lbrule.Service.Host, fmt.Sprintf("%d", lbrule.Service.Port), protocolStr, lbrule.Service.Name, fmt.Sprintf("%d", lbrule.Service.Block), NumToSelect(int(lbrule.Service.Sel)), NumToMode(int(lbrule.Service.Mode), lbrule.Service.PpV2, lbrule.Service.Egress),
+							data = append(data, []string{lbrule.Service.ExternalIP, secIPs, sources, lbrule.Service.Host, fmt.Sprintf("%d", lbrule.Service.Port), protocolStr, lbrule.Service.Name, fmt.Sprintf("%d", lbrule.Service.Block), selectCell(lbrule.Service), NumToMode(int(lbrule.Service.Mode), lbrule.Service.PpV2, lbrule.Service.Egress),
 								eps.EndpointIP, fmt.Sprintf("%d", eps.TargetPort), fmt.Sprintf("%d", eps.Weight), "-", eps.Counter})
 						} else {
-							data = append(data, []string{lbrule.Service.ExternalIP, secIPs, sources, lbrule.Service.Host, fmt.Sprintf("%d-%d", lbrule.Service.Port, lbrule.Service.PortMax), protocolStr, lbrule.Service.Name, fmt.Sprintf("%d", lbrule.Service.Block), NumToSelect(int(lbrule.Service.Sel)), NumToMode(int(lbrule.Service.Mode), lbrule.Service.PpV2, lbrule.Service.Egress),
+							data = append(data, []string{lbrule.Service.ExternalIP, secIPs, sources, lbrule.Service.Host, fmt.Sprintf("%d-%d", lbrule.Service.Port, lbrule.Service.PortMax), protocolStr, lbrule.Service.Name, fmt.Sprintf("%d", lbrule.Service.Block), selectCell(lbrule.Service), NumToMode(int(lbrule.Service.Mode), lbrule.Service.PpV2, lbrule.Service.Egress),
 								eps.EndpointIP, fmt.Sprintf("%d", eps.TargetPort), fmt.Sprintf("%d", eps.Weight), "-", eps.Counter})
 						}
 					} else {
@@ -222,9 +234,9 @@ func PrintGetLbResult(resp *http.Response, o api.RESTOptions) {
 		} else {
 			table.SetHeader(LOADBALANCER_TITLE)
 			if lbrule.Service.PortMax == 0 {
-				data = append(data, []string{lbrule.Service.ExternalIP, fmt.Sprintf("%d", lbrule.Service.Port), protocolStr, lbrule.Service.Name, fmt.Sprintf("%d", lbrule.Service.Block), NumToSelect(int(lbrule.Service.Sel)), NumToMode(int(lbrule.Service.Mode), lbrule.Service.PpV2, lbrule.Service.Egress), fmt.Sprintf("%d", len(lbrule.Endpoints)), fmt.Sprintf("%v", lbrule.Service.Timeout), BoolToMon(lbrule.Service.Monitor)})
+				data = append(data, []string{lbrule.Service.ExternalIP, fmt.Sprintf("%d", lbrule.Service.Port), protocolStr, lbrule.Service.Name, fmt.Sprintf("%d", lbrule.Service.Block), selectCell(lbrule.Service), NumToMode(int(lbrule.Service.Mode), lbrule.Service.PpV2, lbrule.Service.Egress), fmt.Sprintf("%d", len(lbrule.Endpoints)), fmt.Sprintf("%v", lbrule.Service.Timeout), BoolToMon(lbrule.Service.Monitor)})
 			} else {
-				data = append(data, []string{lbrule.Service.ExternalIP, fmt.Sprintf("%d-%d", lbrule.Service.Port, lbrule.Service.PortMax), protocolStr, lbrule.Service.Name, fmt.Sprintf("%d", lbrule.Service.Block), NumToSelect(int(lbrule.Service.Sel)), NumToMode(int(lbrule.Service.Mode), lbrule.Service.PpV2, lbrule.Service.Egress), fmt.Sprintf("%d", len(lbrule.Endpoints)), fmt.Sprintf("%v", lbrule.Service.Timeout), BoolToMon(lbrule.Service.Monitor)})
+				data = append(data, []string{lbrule.Service.ExternalIP, fmt.Sprintf("%d-%d", lbrule.Service.Port, lbrule.Service.PortMax), protocolStr, lbrule.Service.Name, fmt.Sprintf("%d", lbrule.Service.Block), selectCell(lbrule.Service), NumToMode(int(lbrule.Service.Mode), lbrule.Service.PpV2, lbrule.Service.Egress), fmt.Sprintf("%d", len(lbrule.Endpoints)), fmt.Sprintf("%v", lbrule.Service.Timeout), BoolToMon(lbrule.Service.Monitor)})
 			}
 		}
 	}

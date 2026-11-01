@@ -54,6 +54,8 @@ type CreateLoadBalancerOptions struct {
 	AllowedSources []string
 	PPv2En         bool
 	Egress         bool
+	QuicCidCr      uint8
+	QuicCidSidLen  uint8
 }
 
 type CreateLoadBalancerResult struct {
@@ -61,6 +63,15 @@ type CreateLoadBalancerResult struct {
 }
 
 const CreateLoadBalancerSuccess = "success"
+
+const (
+	// SelectQuicCid - the --select value of the quic-cid selector
+	SelectQuicCid = "quic-cid"
+	// QuicCidSidLen - the only server ID length supported: an IPv4 end-point address
+	QuicCidSidLen = 4
+	// QuicCidCrMax - the largest config rotation value
+	QuicCidCrMax = 7
+)
 
 func ReadCreateLoadBalancerOptions(o *CreateLoadBalancerOptions, args []string) error {
 	if len(args) > 1 {
@@ -95,10 +106,31 @@ func SelectToNum(sel string) int {
 		ret = 5
 	case "n3":
 		ret = 6
+	case SelectQuicCid:
+		ret = 7
 	default:
 		ret = 0
 	}
 	return ret
+}
+
+// quicLbArgs checks the quic-cid flags and returns what the rule carries. Every other selector carries nothing,
+// so its request stays what it was. The server would refuse a value it cannot use, but a flag given without
+// the selector would otherwise be dropped without a word.
+func quicLbArgs(o *CreateLoadBalancerOptions, crSet, sidLenSet bool) (*api.LbQuic, error) {
+	if o.Select != SelectQuicCid {
+		if crSet || sidLenSet {
+			return nil, fmt.Errorf("--quic-cid-cr and --quic-cid-sidlen need --select=%s", SelectQuicCid)
+		}
+		return nil, nil
+	}
+	if o.QuicCidSidLen != QuicCidSidLen {
+		return nil, fmt.Errorf("--quic-cid-sidlen must be %d", QuicCidSidLen)
+	}
+	if o.QuicCidCr > QuicCidCrMax {
+		return nil, fmt.Errorf("--quic-cid-cr must be 0 to %d", QuicCidCrMax)
+	}
+	return &api.LbQuic{SidLen: o.QuicCidSidLen, Cr: o.QuicCidCr}, nil
 }
 
 func ModeToNum(sel string) int {
@@ -141,7 +173,7 @@ func NewCreateLoadBalancerCmd(restOptions *api.RESTOptions) *cobra.Command {
 	o := CreateLoadBalancerOptions{}
 
 	var createLbCmd = &cobra.Command{
-		Use:   "lb IP [--select=<rr|hash|priority|persist>] [--tcp=<ports>:<targetPorts>] [--udp=<ports>:<targetPorts>] [--sctp=<ports>:<targetPorts>] [--icmp] [--mark=<val>] [--secips=<ip>,] [--sources=<ip>,] [--endpoints=<ip>:<weight>,] [--mode=<onearm|fullnat>] [--bgp] [--monitor] [--inatimeout=<to>] [--name=<service-name>] [--attachEP] [--detachEP] [--security=<https|e2ehttps|none>] [--host=<url>] [--ppv2en] [--egress]",
+		Use:   "lb IP [--select=<rr|hash|priority|persist>] [--tcp=<ports>:<targetPorts>] [--udp=<ports>:<targetPorts>] [--sctp=<ports>:<targetPorts>] [--icmp] [--mark=<val>] [--secips=<ip>,] [--sources=<ip>,] [--endpoints=<ip>:<weight>,] [--mode=<onearm|fullnat>] [--bgp] [--monitor] [--inatimeout=<to>] [--name=<service-name>] [--attachEP] [--detachEP] [--security=<https|e2ehttps|none>] [--host=<url>] [--ppv2en] [--egress] [--quic-cid-cr=<0-7>] [--quic-cid-sidlen=<4>]",
 		Short: "Create a LoadBalancer",
 		Long: `Create a LoadBalancer
 
@@ -153,6 +185,7 @@ func NewCreateLoadBalancerCmd(restOptions *api.RESTOptions) *cobra.Command {
 	n2 - select the lb end-point base on N2 interface params (only available with fullproxy mode)
 	n3 - select the lb end-point base on N3 interface params
 	lc - select the lb end-point base on least connection
+	quic-cid - select the lb end-point named by the server ID in a QUIC connection ID, else as hash (UDP over IPv4 only, not with dsr or fullproxy mode)
 
 --mode value options
 	onearm - LB put LB-IP as srcIP
@@ -179,6 +212,7 @@ ex)
 	loxicmd create lb  2001::1 --tcp=2020:8080 --endpoints=31.31.31.1:1,32.32.32.1:1,33.33.33.1:1
 	loxicmd create lb 10.10.10.254 --sctp=2020:8080 --endpoints=33.33.33.1:1 --attachEP
 	loxicmd create lb 100.100.100.1 --tcp=8080:80 --endpoints=10.10.10.1:1 --ppv2en
+	loxicmd create lb 192.168.0.200 --select=quic-cid --quic-cid-cr=1 --udp=443:443 --endpoints=10.212.0.1:1,10.212.0.2:1,10.212.0.3:1
 	`,
 		PreRun: func(cmd *cobra.Command, args []string) {
 			if len(args) == 0 {
@@ -211,6 +245,11 @@ ex)
 			}
 			if !sctp && len(o.SecIPs) > 0 {
 				fmt.Printf("Secondary IPs allowed in SCTP only\n")
+				return
+			}
+			quicLb, err := quicLbArgs(&o, cmd.Flags().Changed("quic-cid-cr"), cmd.Flags().Changed("quic-cid-sidlen"))
+			if err != nil {
+				fmt.Printf("Error: %s\n", err.Error())
 				return
 			}
 
@@ -274,6 +313,7 @@ ex)
 					Host:       o.Host,
 					PpV2:       o.PPv2En,
 					Egress:     o.Egress,
+					QuicLb:     quicLb,
 				}
 
 				lbModel.Service = lbService
@@ -334,7 +374,7 @@ ex)
 	createLbCmd.Flags().BoolVarP(&o.BGP, "bgp", "", false, "Enable BGP in the load balancer")
 	createLbCmd.Flags().BoolVarP(&o.Monitor, "monitor", "", false, "Enable monitoring end-points of this rule")
 	createLbCmd.Flags().StringSliceVar(&o.SecIPs, "secips", o.SecIPs, "Secondary IPs for SCTP multihoming rule specified as '<secondaryIP>'")
-	createLbCmd.Flags().StringVarP(&o.Select, "select", "", "rr", "Select the hash algorithm for the load balance.(ex) rr, hash, priority, persist, lc")
+	createLbCmd.Flags().StringVarP(&o.Select, "select", "", "rr", "Select the hash algorithm for the load balance.(ex) rr, hash, priority, persist, lc, quic-cid")
 	createLbCmd.Flags().Uint32VarP(&o.Timeout, "inatimeout", "", 0, "Specify the timeout (in seconds) after which a LB session will be reset for inactivity")
 	createLbCmd.Flags().Uint32VarP(&o.Mark, "mark", "", 0, "Specify the mark num to segregate a load-balancer VIP service")
 	createLbCmd.Flags().StringSliceVar(&o.Endpoints, "endpoints", o.Endpoints, "Endpoints is pairs that can be specified as '<endpointIP>:<Weight>'")
@@ -346,6 +386,8 @@ ex)
 	createLbCmd.Flags().StringSliceVar(&o.AllowedSources, "sources", o.AllowedSources, "Allowed sources for this rule as '<allowedSources>'")
 	createLbCmd.Flags().BoolVarP(&o.PPv2En, "ppv2en", "", false, "Enable proxy procotol v2")
 	createLbCmd.Flags().BoolVarP(&o.Egress, "egress", "", false, "Specify egress rule")
+	createLbCmd.Flags().Uint8VarP(&o.QuicCidCr, "quic-cid-cr", "", 0, "Config rotation value the connection IDs carry, 0 to 7, with --select=quic-cid")
+	createLbCmd.Flags().Uint8VarP(&o.QuicCidSidLen, "quic-cid-sidlen", "", QuicCidSidLen, "Server ID length in bytes, with --select=quic-cid. Only 4 is supported")
 
 	return createLbCmd
 }

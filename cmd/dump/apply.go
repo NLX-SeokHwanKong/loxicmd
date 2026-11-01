@@ -584,6 +584,7 @@ func ApplyLbConfig(file string, restOptions *api.RESTOptions) {
 			Sel:        lb.Service.Sel,
 			Mode:       lb.Service.Mode,
 			BGP:        lb.Service.BGP,
+			QuicLb:     lb.Service.QuicLb,
 		}
 
 		lbModel.Service = lbService
